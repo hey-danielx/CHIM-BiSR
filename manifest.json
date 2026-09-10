@@ -1,0 +1,22 @@
+{
+    "name": "CHIM-BiSR",
+    "description": "Lets CHIM followers comment on Bathing in Skyrim dirt and bathe themselves when water or a wash basin is nearby.",
+    "config_url": "/HerikaServer/ext/CHIM-BiSR/index.php",
+    "config_url_target": "_blank",
+    "git_repo": "hey-danielx/CHIM-BiSR",
+    "mod_download_url": "https://github.com/hey-danielx/CHIM-BiSR/releases/latest/download/BiSR-CHIM-Patch.zip",
+    "default_channel": "main",
+    "channels": {
+        "main": {
+            "label": "Live",
+            "branch": "main",
+            "package_source": "release",
+            "package_urls": [
+                "https://github.com/hey-danielx/CHIM-BiSR/releases/latest/download/CHIM-BiSR.tar.gz",
+                "https://github.com/hey-danielx/CHIM-BiSR/releases/latest/download/CHIM-BiSR.tar"
+            ]
+        }
+    },
+    "version": "1.0.0",
+    "schema_version": 2
+}

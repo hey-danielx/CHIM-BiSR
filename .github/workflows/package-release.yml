@@ -1,0 +1,97 @@
+name: Package release assets
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/package-release.yml"
+      - "scripts/**"
+      - "SkyrimPatch/**"
+      - "manifest.json"
+      - "dwemer-package.json"
+      - "lib/**"
+      - "migrations/**"
+      - "*.php"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Check package versions
+        shell: pwsh
+        run: |
+          $manifest = Get-Content -LiteralPath manifest.json -Raw | ConvertFrom-Json
+          $package = Get-Content -LiteralPath dwemer-package.json -Raw | ConvertFrom-Json
+          if ([string]$package.version -ne [string]$manifest.version) {
+            throw "dwemer-package.json version $($package.version) does not match manifest version $($manifest.version)."
+          }
+          if ('${{ github.event_name }}' -eq 'release') {
+            $tagVersion = '${{ github.event.release.tag_name }}'.TrimStart('v')
+            if ($tagVersion -ne [string]$manifest.version) {
+              throw "Release tag $tagVersion does not match manifest version $($manifest.version)."
+            }
+          }
+
+      - name: Build server and Mod Organizer packages
+        shell: pwsh
+        run: .\scripts\build-release.ps1
+
+      - name: Check release assets
+        shell: pwsh
+        run: |
+          $expected = @(
+            'release/CHIM-BiSR.tar.gz',
+            'release/CHIM-BiSR.tar',
+            'release/BiSR-CHIM-Patch.zip'
+          )
+          foreach ($path in $expected) {
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Missing release asset $path"
+            }
+          }
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CHIM-BiSR-release-assets
+          path: |
+            release/CHIM-BiSR.tar.gz
+            release/CHIM-BiSR.tar
+            release/BiSR-CHIM-Patch.zip
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'release'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: CHIM-BiSR-release-assets
+          path: release-assets
+
+      - name: Attach assets to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload '${{ github.event.release.tag_name }}' \
+            release-assets/CHIM-BiSR.tar.gz \
+            release-assets/CHIM-BiSR.tar \
+            release-assets/BiSR-CHIM-Patch.zip \
+            --repo '${{ github.repository }}' \
+            --clobber

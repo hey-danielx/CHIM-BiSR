@@ -1,0 +1,8 @@
+release/
+*.dwpkg
+*.tar
+*.tar.gz
+*.zip
+Thumbs.db
+_compile_src/
+compile-stubs/

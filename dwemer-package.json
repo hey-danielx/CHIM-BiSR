@@ -1,0 +1,9 @@
+{
+    "schema_version": 4,
+    "name": "CHIM-BiSR",
+    "version": "1.0.0",
+    "description": "CHIM server plugin for Bathing in Skyrim - Renewed hygiene comments and bathing.",
+    "server": {
+        "mutable_paths": []
+    }
+}
