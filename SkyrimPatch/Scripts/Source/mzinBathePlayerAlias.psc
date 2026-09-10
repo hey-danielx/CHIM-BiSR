@@ -84,9 +84,9 @@ Function TryWashTeammate(Actor akTarget, Actor akGawker)
 	MiscObject WashProp = BatheQuest.TryFindWashProp(akTarget)
 	if WashProp && !(BatheQuest.IsRestricted(akTarget, akGawker))
 		if BatheQuest.IsInWater(akTarget)
-			BatheQuest.WashActor(akTarget, WashProp, DoShower = false)
+			BatheQuest.WashActor(akTarget, WashProp, false, false, true, false)
 		ElseIf BatheQuest.IsUnderWaterfall(akTarget)
-			BatheQuest.WashActor(akTarget, WashProp, DoShower = true)
+			BatheQuest.WashActor(akTarget, WashProp, true, false, true, false)
 		EndIf
 	EndIf
 EndFunction
@@ -106,6 +106,9 @@ EndEvent
 State PauseKeyCheck
 	Event OnBeginState()
 		UnregisterForAllKeys()
+	EndEvent
+	Event OnCHIMCommand(String npcName, String command, String parameter)
+		mzinCHIM.HandleCommand(BatheQuest, npcName, command, parameter)
 	EndEvent
 	Event OnKeyDown(Int KeyCode)
 		If Utility.IsInMenuMode() || SPE_Actor.GetPlayerSpeechTarget() || UI.IsTextInputEnabled()

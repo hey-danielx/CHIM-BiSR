@@ -46,7 +46,7 @@ if ([string]::IsNullOrWhiteSpace($Mo2PatchPath) -and -not $env:GITHUB_ACTIONS -a
 $manifest = Get-Content -LiteralPath (Join-Path $pluginRoot 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $pluginName = [string]$manifest.name
 $version = [string]$manifest.version
-$scriptNames = @('mzinCHIM', 'mzinBathePlayerAlias')
+$scriptNames = @('mzinCHIM', 'mzinBathePlayerAlias', 'BiSR')
 
 if (-not [string]::IsNullOrWhiteSpace($GitHubRepo)) {
     $manifest | Add-Member -NotePropertyName git_repo -NotePropertyValue $GitHubRepo -Force

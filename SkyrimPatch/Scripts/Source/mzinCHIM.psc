@@ -175,20 +175,69 @@ Bool Function BasinInRange(Actor akActor, String asEditorId, Float afRadius) Glo
 EndFunction
 
 Bool Function NearWashBasin(Actor akActor) Global
-	If BasinInRange(akActor, "NobleWashBasin01", 512.0)
+	If BasinInRange(akActor, "NobleWashBasin01", 1024.0)
 		Return True
-	ElseIf BasinInRange(akActor, "NobleWashBasin02", 512.0)
+	ElseIf BasinInRange(akActor, "NobleWashBasin02", 1024.0)
 		Return True
-	ElseIf BasinInRange(akActor, "CommonWashBasin01", 512.0)
+	ElseIf BasinInRange(akActor, "CommonWashBasin01", 1024.0)
 		Return True
-	ElseIf BasinInRange(akActor, "UpperClassWashBasin01", 512.0)
+	ElseIf BasinInRange(akActor, "UpperClassWashBasin01", 1024.0)
 		Return True
-	ElseIf BasinInRange(akActor, "RTWashBasin01", 512.0)
+	ElseIf BasinInRange(akActor, "RTWashBasin01", 1024.0)
 		Return True
-	ElseIf BasinInRange(akActor, "FarmhouseWashBasin01", 512.0)
+	ElseIf BasinInRange(akActor, "FarmhouseWashBasin01", 1024.0)
 		Return True
 	EndIf
 	Return False
+EndFunction
+
+Bool Function TextLooksLikeBath(String asText) Global
+	If asText == ""
+		Return False
+	EndIf
+	If StringUtil.Find(asText, "AAAFriendlierBath") >= 0
+		Return True
+	ElseIf StringUtil.Find(asText, "Bath") >= 0
+		Return True
+	ElseIf StringUtil.Find(asText, "bath") >= 0
+		Return True
+	ElseIf StringUtil.Find(asText, "Tub") >= 0
+		Return True
+	ElseIf StringUtil.Find(asText, "tub") >= 0
+		Return True
+	EndIf
+	Return False
+EndFunction
+
+Bool Function InBathCell(Actor akActor) Global
+	If !akActor
+		Return False
+	EndIf
+	Cell akCell = akActor.GetParentCell()
+	If !akCell
+		Return False
+	EndIf
+	If TextLooksLikeBath(PO3_SKSEFunctions.GetFormEditorID(akCell))
+		Return True
+	EndIf
+	If TextLooksLikeBath(akCell.GetName())
+		Return True
+	EndIf
+	String originMod = PO3_SKSEFunctions.GetFormModName(akCell, False)
+	If originMod == "Friendlier Taverns.esp"
+		Return True
+	EndIf
+	Return False
+EndFunction
+
+Bool Function AtBathSpot(Actor akActor) Global
+	If !akActor
+		Return False
+	EndIf
+	If NearWashBasin(akActor)
+		Return True
+	EndIf
+	Return InBathCell(akActor)
 EndFunction
 
 Bool Function CanReachWater(mzinBatheQuest akQuest, Actor akActor) Global
@@ -201,7 +250,40 @@ Bool Function CanReachWater(mzinBatheQuest akQuest, Actor akActor) Global
 	If mzinAPI.IsActorInWater(akActor)
 		Return True
 	EndIf
-	Return NearWashBasin(akActor)
+	Return AtBathSpot(akActor)
+EndFunction
+
+String Function NormalizeCommand(String asCommand) Global
+	If asCommand == ""
+		Return ""
+	EndIf
+	Int atPos = StringUtil.Find(asCommand, "@")
+	If atPos > 0
+		Return StringUtil.Substring(asCommand, 0, atPos)
+	EndIf
+	Return asCommand
+EndFunction
+
+Bool Function StartWash(mzinBatheQuest akQuest, Actor akActor, MiscObject washProp, Bool usedShower) Global
+	If !akActor
+		Return False
+	EndIf
+	Int eid = ModEvent.Create("BiS_WashActor")
+	If eid
+		ModEvent.PushForm(eid, akActor)
+		ModEvent.PushForm(eid, washProp)
+		ModEvent.PushBool(eid, usedShower)
+		ModEvent.PushBool(eid, False)
+		ModEvent.PushBool(eid, True)
+		ModEvent.PushBool(eid, False)
+		ModEvent.Send(eid)
+		Return True
+	EndIf
+	If akQuest
+		akQuest.WashActor(akActor, washProp, usedShower, False, True, False)
+		Return True
+	EndIf
+	Return False
 EndFunction
 
 Actor Function FindFollowerByName(String asNpcName) Global
@@ -220,7 +302,7 @@ Actor Function FindFollowerByName(String asNpcName) Global
 	EndIf
 	Int i = 0
 	While i < followers.Length
-		If GetActorName(followers[i]) == asNpcName
+		If GetActorName(followers[i]) == asNpcName || followers[i].GetDisplayName() == asNpcName
 			Return followers[i]
 		EndIf
 		i += 1
@@ -298,6 +380,7 @@ Function TryBatheActor(mzinBatheQuest akQuest, Actor akActor, String asNpcName) 
 		Return
 	EndIf
 	If !akQuest || !akActor
+		Debug.Trace("[CHIM-BiSR] Take_Bath missing actor for " + asNpcName)
 		ReportCommandResult(asNpcName, "ExtCmdBiSR_Bathe", "", asNpcName + " cannot bathe right now.")
 		Return
 	EndIf
@@ -312,30 +395,44 @@ Function TryBatheActor(mzinBatheQuest akQuest, Actor akActor, String asNpcName) 
 
 	MiscObject washProp = akQuest.TryFindWashProp(akActor)
 	If !washProp
+		Debug.Trace("[CHIM-BiSR] Take_Bath " + asNpcName + " has no soap or wash rag")
 		ReportCommandResult(asNpcName, "ExtCmdBiSR_Bathe", "", asNpcName + " has no soap or wash rag.")
 		Return
 	EndIf
-	If akQuest.IsRestricted(akActor)
+
+	Bool sitting = akActor.GetSitState() != 0
+	Bool inWater = akQuest.IsInWater(akActor) || mzinAPI.IsActorInWater(akActor)
+	Bool usedShower = akQuest.IsUnderWaterfall(akActor)
+	Bool atBath = AtBathSpot(akActor)
+	String cellId = ""
+	Cell bathCell = akActor.GetParentCell()
+	If bathCell
+		cellId = PO3_SKSEFunctions.GetFormEditorID(bathCell)
+		If cellId == ""
+			cellId = bathCell.GetName()
+		EndIf
+	EndIf
+	Debug.Trace("[CHIM-BiSR] Take_Bath " + asNpcName + " sit=" + (akActor.GetSitState() as String) + " water=" + (inWater as Int) + " shower=" + (usedShower as Int) + " bathspot=" + (atBath as Int) + " cell=" + cellId)
+
+	If akQuest.IsRestricted(akActor) && !atBath
+		Debug.Trace("[CHIM-BiSR] Take_Bath " + asNpcName + " blocked by BiSR restriction")
 		ReportCommandResult(asNpcName, "ExtCmdBiSR_Bathe", "", asNpcName + " cannot bathe right now.")
 		Return
 	EndIf
 	If !CanReachWater(akQuest, akActor)
-		ReportCommandResult(asNpcName, "ExtCmdBiSR_Bathe", "", asNpcName + " needs a river, waterfall, or wash basin nearby.")
+		Debug.Trace("[CHIM-BiSR] Take_Bath " + asNpcName + " has no water, waterfall, basin, or bath")
+		ReportCommandResult(asNpcName, "ExtCmdBiSR_Bathe", "", asNpcName + " needs a river, waterfall, or bath nearby.")
 		Return
 	EndIf
 
-	Bool usedShower = akQuest.IsUnderWaterfall(akActor)
-	Bool usedBasin = False
-	If !akQuest.IsInWater(akActor) && !usedShower && !akQuest.IsSubmerged(akActor) && !mzinAPI.IsActorInWater(akActor)
-		usedBasin = NearWashBasin(akActor)
-	EndIf
-
 	Bool ok = False
-	If usedBasin
-		akQuest.WashActor(akActor, washProp, True, False)
-		ok = True
+	If sitting || atBath
+		ok = StartWash(akQuest, akActor, washProp, usedShower)
 	Else
 		ok = akQuest.TryWashActor(akActor, washProp, usedShower, False)
+		If !ok
+			ok = StartWash(akQuest, akActor, washProp, usedShower)
+		EndIf
 	EndIf
 
 	If ok
@@ -347,9 +444,21 @@ Function TryBatheActor(mzinBatheQuest akQuest, Actor akActor, String asNpcName) 
 EndFunction
 
 Function HandleCommand(mzinBatheQuest akQuest, String asNpcName, String asCommand, String asParameter) Global
+	asCommand = NormalizeCommand(asCommand)
 	If asCommand != "ExtCmdBiSR_Bathe"
 		Return
 	EndIf
+	Debug.Trace("[CHIM-BiSR] HandleCommand " + asNpcName + " " + asCommand)
 	Actor target = FindFollowerByName(asNpcName)
 	TryBatheActor(akQuest, target, asNpcName)
+EndFunction
+
+Bool Function DispatchExternalCommand(String asNpcName, String asCommand, String asParameter) Global
+	asCommand = NormalizeCommand(asCommand)
+	If asCommand != "ExtCmdBiSR_Bathe"
+		Return False
+	EndIf
+	Debug.Trace("[CHIM-BiSR] DispatchExternalCommand " + asNpcName)
+	HandleCommand(mzinAPI.GetBatheQuest(), asNpcName, asCommand, asParameter)
+	Return True
 EndFunction
