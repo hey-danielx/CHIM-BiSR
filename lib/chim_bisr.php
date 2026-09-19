@@ -219,6 +219,46 @@ function chimBisrGetActorState(string $actorName): array
     }
 }
 
+// Copy persisted state to an existing NPC; the plugin table remains the live cache.
+function chimBisrStoreNpcPluginState(string $actorName): void
+{
+    global $db;
+    static $supported = null;
+    try {
+        if ($supported === null) {
+            $supported = false;
+            $enginePath = (string) ($GLOBALS['ENGINE_PATH'] ?? '');
+            $classFile = rtrim($enginePath, '/\\') . '/lib/core/npc_master.class.php';
+            if (!class_exists('NpcMaster', false) && $enginePath !== '' && is_file($classFile)) {
+                require_once $classFile;
+            }
+            if (method_exists('NpcMaster', 'setPluginData')) {
+                $column = $db->fetchOne("SELECT 1 AS supported FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'core_npc_master'
+                    AND column_name = 'plugin_extended_data'");
+                $supported = !empty($column['supported']);
+            }
+        }
+        if (!$supported) return;
+        // Events carry names, not FormIDs. Never choose between ambiguous profiles.
+        $match = $db->fetchOne("SELECT min(id) AS id, count(*) AS matches FROM
+            (SELECT id FROM core_npc_master WHERE npc_name = $1 LIMIT 2) candidates", [$actorName]);
+        if ((int) ($match['matches'] ?? 0) !== 1) return;
+        $row = $db->fetchOne("SELECT to_jsonb(state) - 'actor_name' - 'updated_at' AS data
+            FROM plugins.chim_bisr_actor_state state WHERE actor_name = $1", [$actorName]);
+        if (empty($row['data'])) return;
+        $state = json_decode($row['data'], true, 512, JSON_THROW_ON_ERROR);
+
+        if (!(new NpcMaster())->setPluginData((int) $match['id'], 'chim_bisr', [
+            'actor_name' => $actorName, 'state' => (object) $state, 'updated_at' => gmdate('c'),
+        ])) {
+            throw new RuntimeException('npc_plugin_state_not_saved');
+        }
+    } catch (Throwable $e) {
+        error_log('[CHIM-BiSR] Could not store NPC plugin state; live cache retained.');
+    }
+}
+
 function chimBisrUpsertActorDirt(string $actorName, int $tier, float $percent, bool $isPlayer, bool $clear): void
 {
     if (!chimBisrStateDbReady()) {
@@ -256,6 +296,7 @@ function chimBisrUpsertActorDirt(string $actorName, int $tier, float $percent, b
             is_player = EXCLUDED.is_player,
             updated_at = CURRENT_TIMESTAMP
     ");
+    chimBisrStoreNpcPluginState($actorName);
 }
 
 function chimBisrDescribeTier(int $tier, bool $isSelf): string

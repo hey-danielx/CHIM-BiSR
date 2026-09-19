@@ -57,3 +57,11 @@ Bathing in Skyrim - Renewed, SKSE, PapyrusUtil, PO3 Papyrus Extender, CHIM (`AIA
 2. Travel until a follower is at least a bit dirty. They should get a hygiene marker and may make one short complaint.
 3. Let the player get filthy. A follower should comment on the smell and that a bath is overdue.
 4. Give that follower soap or a wash rag, stand them in a river or next to a wash basin, and let them use `Take_Bath` without opening BiSR dialogue.
+
+## NPC plugin data
+
+On servers with [HerikaServer #96](https://github.com/Dwemer-Dynamics/HerikaServer/pull/96), accepted state changes also copy persisted state into `core_npc_master.plugin_extended_data.chim_bisr` through `NpcMaster::setPluginData`. The object contains `actor_name`, `state`, and UTC `updated_at`; consumers can read it with `getPluginData($npcId, 'chim_bisr')`. Other namespaces are preserved and these writes do not create NPC history.
+
+Only an exact, unique existing NPC name is used because current events do not carry FormIDs. Unknown or ambiguous NPCs retain their state in the existing plugin table and are retried on the next state change. Existing rows are retained; there is no bulk backfill or profile creation. Global settings stay in their current table.
+
+The existing table remains the live prompt/state cache. Ordinary NPC snapshots include the copied data; history rollback does not rewind the live cache, and subsequent events refresh the NPC copy. Older servers without the API or migrated column keep their existing behavior. Optional copy failures log a warning without interrupting live state. No client change or extension migration is required.
