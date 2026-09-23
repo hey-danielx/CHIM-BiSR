@@ -191,6 +191,7 @@ function chimBisrEmptyState(): array
         'dirt_tier' => 0,
         'dirt_percent' => 0.0,
         'is_player' => false,
+        'known' => false,
     ];
 }
 
@@ -213,6 +214,7 @@ function chimBisrGetActorState(string $actorName): array
             'dirt_tier' => chimBisrNormalizeTier($row['dirt_tier'] ?? 0),
             'dirt_percent' => (float) ($row['dirt_percent'] ?? 0),
             'is_player' => chimBisrToBool($row['is_player'] ?? false),
+            'known' => true,
         ];
     } catch (Throwable $e) {
         return $empty;
@@ -403,28 +405,29 @@ function chimBisrPromptInstructions(): string
     $bathe = !empty($settings['allow_bathe_action']);
 
     $lines = [
-        'This speaker is an NPC. Hygiene comes from Bathing in Skyrim dirt on the speaker and the player. Never mention mods, meters, factions, or game menus.',
+        'This speaker is an NPC. Hygiene comes only from Bathing in Skyrim. Never mention mods, meters, factions, or game menus.',
+        'Do not invent dirt, grime, smell, or a need to wash for yourself or anyone else. Only describe dirt when that person has a Hygiene line that says they feel dirty. If there is no Hygiene line, or it says they do not feel dirty, they are not dirty. Being in an inn or bath house is not dirt.',
     ];
 
     if ($own) {
-        $lines[] = 'If this NPC is a bit dirty, they may briefly mention wanting to wash. If they are quite dirty, they should sound uncomfortable. If they are filthy, they should sound distressed about their own smell and needing a bath soon.';
+        $lines[] = 'If this NPC\'s Hygiene line says they are a bit dirty, they may briefly mention wanting to wash. If they are quite dirty, they should sound uncomfortable. If they are filthy, they should sound distressed about their own smell and needing a bath soon.';
     } else {
         $lines[] = 'Do not comment on this NPC\'s own dirt or hygiene.';
     }
 
     if ($player) {
-        $lines[] = 'If the player is a bit dirty, a follower may notice some dirt. If the player is filthy, they should comment on a really bad smell and that the player should bathe as soon as possible. Do not invent player dirt if plugin state says the player is clean.';
+        $lines[] = 'If the player\'s Hygiene line says they are a bit dirty, a follower may notice some dirt. If the player is filthy, they should comment on a really bad smell and that the player should bathe as soon as possible.';
     } else {
         $lines[] = 'Do not comment on the player\'s dirt, smell, or bathing habits.';
     }
 
     if ($bathe) {
-        $lines[] = 'If this NPC is dirty, has soap or a wash rag, and is in water, under a waterfall, or next to a wash basin, they may use Take_Bath on their own without waiting for dialogue. If they cannot bathe yet, they may only talk about it.';
+        $lines[] = 'Take_Bath washes off Bathing in Skyrim dirt. Use it only when this NPC currently feels dirty, has soap or a wash rag, and is in water, under a waterfall, or next to a wash basin. A bath house is not a reason to claim they are filthy.';
     } else {
         $lines[] = 'Do not use Take_Bath.';
     }
 
-    $lines[] = 'If someone is clean again, drop the hygiene topic.';
+    $lines[] = 'If someone is clean again or does not feel dirty, drop the hygiene topic.';
     return implode("\n", $lines);
 }
 
@@ -440,12 +443,16 @@ function chimBisrActorProfileLine($actorName, $actorType = '', array $context = 
     }
 
     $state = chimBisrGetActorState($actorName);
+    if (empty($state['known'])) {
+        return '';
+    }
+
     $description = chimBisrDescribeTier((int) $state['dirt_tier'], true);
     if ($description !== '') {
         return 'Hygiene: ' . $description . '.';
     }
 
-    return '';
+    return 'Hygiene: does not feel dirty.';
 }
 
 function chimBisrTurnInstruction(): string
@@ -468,6 +475,9 @@ function chimBisrTurnInstruction(): string
     $ownTier = !empty($settings['comment_own_dirt']) ? (int) $ownState['dirt_tier'] : 0;
     $playerTier = !empty($settings['comment_player_dirt']) ? (int) $playerState['dirt_tier'] : 0;
     if ($ownTier <= 0 && $playerTier <= 0) {
+        if (!empty($settings['inject_prompt']) && !empty($ownState['known']) && (chimBisrIsBoredRequest($type) || chimBisrIsPlayerTalkRequest($type))) {
+            return 'You do not feel dirty. Do not talk as if you are dirty, smelly, or desperate for a bath. You may mention a bath as ordinary comfort if you are at one, but do not treat dirt as the reason. Do not mention mods, meters, or game menus.';
+        }
         return '';
     }
 

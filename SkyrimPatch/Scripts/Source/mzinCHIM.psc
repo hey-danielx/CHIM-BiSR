@@ -37,12 +37,44 @@ Float Function GetDirtPercent(Actor akActor) Global
 	Return StorageUtil.GetFloatValue(akActor, "BiS_Dirtiness")
 EndFunction
 
-Int Function GetDirtTier(Float afPercent) Global
-	If afPercent >= 0.75
+Float Function ReadThreshold(FormList akList, Int aiIndex, Float afDefault) Global
+	If !akList || aiIndex < 0 || aiIndex >= akList.GetSize()
+		Return afDefault
+	EndIf
+	GlobalVariable gv = akList.GetAt(aiIndex) As GlobalVariable
+	If !gv
+		Return afDefault
+	EndIf
+	Return gv.GetValue()
+EndFunction
+
+Int Function GetDirtTier(mzinBatheQuest akQuest, Float afPercent) Global
+	Float slightly = 0.60
+	Float quite = 0.98
+	Float filthy = 1.00
+
+	If akQuest
+		FormList thresholds = akQuest.DirtinessThresholdList
+		If thresholds
+			Int n = thresholds.GetSize()
+			Float first = ReadThreshold(thresholds, 0, -1.0)
+			If n >= 5 && first >= 0.0 && first <= 0.05
+				slightly = ReadThreshold(thresholds, 2, 0.60)
+				quite = ReadThreshold(thresholds, 3, 0.98)
+				filthy = ReadThreshold(thresholds, 4, 1.00)
+			ElseIf n >= 3
+				slightly = ReadThreshold(thresholds, 1, 0.60)
+				quite = ReadThreshold(thresholds, 2, 0.98)
+				filthy = quite
+			EndIf
+		EndIf
+	EndIf
+
+	If afPercent >= filthy
 		Return 3
-	ElseIf afPercent >= 0.50
+	ElseIf afPercent >= quite && quite < filthy
 		Return 2
-	ElseIf afPercent >= 0.25
+	ElseIf afPercent >= slightly
 		Return 1
 	EndIf
 	Return 0
@@ -109,22 +141,28 @@ Function SetDirtMarker(Actor akActor, String asName, Int aiTier, Float afPercent
 	EndIf
 
 	Int lastTier = StorageUtil.GetIntValue(akActor, "BiS_ChimDirtTier", -1)
-	If lastTier == aiTier
+	Float lastPercent = StorageUtil.GetFloatValue(akActor, "BiS_ChimDirtPercent", -1.0)
+	Float delta = lastPercent - afPercent
+	If delta < 0.0
+		delta = -delta
+	EndIf
+	If lastTier == aiTier && lastPercent >= 0.0 && delta < 0.01
 		Return
 	EndIf
 	StorageUtil.SetIntValue(akActor, "BiS_ChimDirtTier", aiTier)
+	StorageUtil.SetFloatValue(akActor, "BiS_ChimDirtPercent", afPercent)
 
-	String line
-	String flag = afPercent as String
-	If aiTier <= 0
-		line = asName + " is clean again."
-		flag = "clear"
-	Else
-		line = asName + " is " + DirtLabel(aiTier) + "."
+	AIAgentFunctions.logMessageForActor("bisr_dirt@" + asName + "@" + aiTier + "@" + (afPercent as String), "infoaction", asName)
+	If lastTier == aiTier
+		Return
 	EndIf
-
-	AIAgentFunctions.logMessageForActor(line, "infoaction", asName)
-	AIAgentFunctions.logMessageForActor("bisr_dirt@" + asName + "@" + aiTier + "@" + flag, "infoaction", asName)
+	If aiTier <= 0
+		If lastTier > 0
+			AIAgentFunctions.logMessageForActor(asName + " is clean again.", "infoaction", asName)
+		EndIf
+	Else
+		AIAgentFunctions.logMessageForActor(asName + " is " + DirtLabel(aiTier) + ".", "infoaction", asName)
+	EndIf
 EndFunction
 
 Bool Function SpeakOwnDirt(Actor akActor, String asName, Int aiTier) Global
@@ -319,8 +357,9 @@ Function NotifyActorDirt(mzinBatheQuest akQuest, Actor akActor, Bool abIsPlayer,
 		Return
 	EndIf
 	Float percent = GetDirtPercent(akActor)
-	Int tier = GetDirtTier(percent)
+	Int tier = GetDirtTier(akQuest, percent)
 	Int lastTier = StorageUtil.GetIntValue(akActor, "BiS_ChimDirtTier", -1)
+	Debug.Trace("[CHIM-BiSR] dirt " + actorName + " pct=" + (percent as String) + " tier=" + (tier as String))
 	SetDirtMarker(akActor, actorName, tier, percent, abIsPlayer)
 	If abSpeak && !abIsPlayer && tier > 0 && tier > lastTier && lastTier != -1
 		SpeakOwnDirt(akActor, actorName, tier)
@@ -337,7 +376,7 @@ Function ScanHygiene(mzinBatheQuest akQuest, Actor akPlayer) Global
 	String playerName = GetActorName(akPlayer)
 	Int lastPlayerTier = StorageUtil.GetIntValue(akPlayer, "BiS_ChimDirtTier", -1)
 	NotifyActorDirt(akQuest, akPlayer, True, False)
-	Int playerTier = GetDirtTier(GetDirtPercent(akPlayer))
+	Int playerTier = GetDirtTier(akQuest, GetDirtPercent(akPlayer))
 	Bool playerGotDirtier = playerTier > 0 && (lastPlayerTier == -1 || playerTier > lastPlayerTier)
 
 	Actor[] followers = PO3_SKSEFunctions.GetPlayerFollowers()
@@ -371,6 +410,7 @@ Function NotifyWashed(Actor akActor) Global
 		Return
 	EndIf
 	StorageUtil.SetIntValue(akActor, "BiS_ChimDirtTier", 0)
+	StorageUtil.SetFloatValue(akActor, "BiS_ChimDirtPercent", 0.0)
 	AIAgentFunctions.logMessageForActor(actorName + " is clean again.", "infoaction", actorName)
 	AIAgentFunctions.logMessageForActor("bisr_dirt@" + actorName + "@0@clear", "infoaction", actorName)
 EndFunction

@@ -65,7 +65,7 @@ function chimBisrChecked($value): string
         <label>
             <input type="checkbox" name="comment_own_dirt" value="1" <?php echo chimBisrChecked($settings['comment_own_dirt']); ?>>
             Followers may comment on their own dirt
-            <span class="hint">Light dirt is a brief complaint. Heavy dirt should sound uncomfortable. Filth should sound urgent.</span>
+            <span class="hint">Comments follow Bathing in Skyrim feeling-dirty stages, not the raw percent. Light dirt is a brief complaint. Heavy dirt should sound uncomfortable. Filth should sound urgent. Below BiSR's slightly-dirty threshold they should not complain.</span>
         </label>
         <label>
             <input type="checkbox" name="comment_player_dirt" value="1" <?php echo chimBisrChecked($settings['comment_player_dirt']); ?>>
